@@ -1,10 +1,20 @@
-import fetch from 'isomorphic-fetch';
-import generateRandomString from '../utils/generateRandomString';
+import auth0 from 'auth0-js'
+// import fetch from 'isomorphic-fetch';
+// import generateRandomString from '../utils/generateRandomString';
 import scopesArray from '../utils/scopesArray';
-import getHashParams from '../utils/getHashParams';
+// import getHashParams from '../utils/getHashParams';
 import { config } from '../config/client';
 
 export default class AuthService {
+  auth0 = new auth0.WebAuth({
+    domain: config.auth0Domain,
+    clientID: config.auth0ClientId,
+    audience: config.auth0ApiAudience,
+    redirectUri: config.auth0RedirectUri,
+    responseType: 'token id_token',
+    scope: scopesArray.join(' '),
+  });
+  
   constructor() {
     this.login = this.login.bind(this);
     this.logout = this.logout.bind(this);
@@ -14,7 +24,7 @@ export default class AuthService {
   }
 
   login() {
-    const state = generateRandomString(16);
+    /* const state = generateRandomString(16);
     localStorage.setItem('auth_state', state);
 
     let url = 'https://accounts.spotify.com/authorize';
@@ -24,7 +34,8 @@ export default class AuthService {
     url += '&redirect_uri=' + encodeURIComponent(config.spotifyRedirectUri);
     url += '&state=' + encodeURIComponent(state);
 
-    window.location.href = url;
+    window.location.href = url; */
+    this.auth0.authorize();
   }
 
   logout() {
@@ -37,7 +48,7 @@ export default class AuthService {
 
   handleAuthentication() {
     return new Promise((resolve, reject) => {
-      const { access_token, state } = getHashParams();
+      /* const { access_token, state } = getHashParams();
       const auth_state = localStorage.getItem('auth_state');
 
       if (state === null || state !== auth_state) {
@@ -51,7 +62,21 @@ export default class AuthService {
         return resolve(access_token);
       } else {
         return reject(new Error('The token is invalid'));
-      }
+      } */
+
+      this.auth0.parseHash((err, authResult) => {
+        if (err) {
+          console.log('Error parsing hash in Auth0 service');
+          
+          return reject(err)
+        }
+
+        if (authResult && authResult.accessToken && authResult.idToken) {
+          this.setSession(authResult);
+
+          return resolve(authResult.accessToken);
+        }
+      });
     }).then(accessToken => {
       return this.handleUserInfo(accessToken);
     });
@@ -63,6 +88,7 @@ export default class AuthService {
     );
 
     localStorage.setItem('access_token', authResult.accessToken);
+    localStorage.setItem('id_token', authResult.idToken);
     localStorage.setItem('expires_at', expiresAt);
   }
 
@@ -73,7 +99,7 @@ export default class AuthService {
   }
 
   handleUserInfo(accessToken) {
-    const headers = {
+    /* const headers = {
       Authorization: `Bearer ${accessToken}`
     };
 
@@ -83,7 +109,23 @@ export default class AuthService {
         this.setProfile(profile);
 
         return profile;
+      }); */
+
+    return new Promise((resolve, reject) => {
+      this.auth0.client.userInfo(accessToken, (err, profile) => {
+        if (err) {
+          console.log('Error getting user info in Auth0 service');
+          
+          return reject(err);
+        }
+
+        if (profile) {
+          this.setProfile(profile);
+
+          return resolve(profile);
+        }
       });
+    });
   }
 
   setProfile(profile) {
